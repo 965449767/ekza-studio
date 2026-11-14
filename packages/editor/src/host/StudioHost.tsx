@@ -13,6 +13,7 @@ import { GLHost } from '../gl/GLHost';
 import { EditorAppProvider } from '../hooks';
 import { CommandPaletteHost } from '../overlays/CommandPalette';
 import { createShellServices } from '../services/browser';
+import type { SavePlatform } from '../services/saveTicket';
 import type { ToastNotifier } from '../services/notify';
 import { installIntakeWorker } from '../services/intakeWorker';
 import { installSkinWorker } from '../services/skinWorker';
@@ -60,6 +61,9 @@ export interface StudioHostProps {
   /** M7 G-d (ADR 0017 §2; M7-GB-12): the generation gateway's base (`NEXT_PUBLIC_EKZA_GEN_GATEWAY`); '' or absent
    *  hides AI generation. */
   readonly genGateway?: string;
+  /** Where exported files go when the page is an installed app (the Android client's share sheet); absent: the
+   *  browser's own download / share. */
+  readonly savePlatform?: SavePlatform;
   readonly summarize?: Summarizer;
   readonly createValidatorWorker?: () => Worker;
   /** A same-page navigation between the shells (Next's `router.push`); without it a switch reloads the page with a
@@ -102,6 +106,7 @@ function boot(props: StudioHostProps, push: (href: string) => void): Boot {
       ? {}
       : { generation: { baseUrl: props.genGateway, pollMs: params.e2e ? 400 : 3000 } }),
     ...(props.createValidatorWorker === undefined ? {} : { createValidatorWorker: props.createValidatorWorker }),
+    ...(props.savePlatform === undefined ? {} : { filePlatform: props.savePlatform }),
   });
   let app: EditorApp;
   try {

@@ -46,7 +46,7 @@ export function TopBar({
         <Cluster className="pointer-events-auto flex">
           <TouchButton
             variant="ghost"
-            className={compact ? 'max-w-[136px] gap-1 px-2 text-fg' : 'max-w-[220px] gap-1.5 px-3 text-fg'}
+            className={compact ? 'max-w-[156px] gap-1 px-2 text-fg' : 'max-w-[220px] gap-1.5 px-3 text-fg'}
             aria-label={`${name}${dirty ? `, ${en.top.unsaved}` : ''}. ${en.top.projectMenu}`}
             aria-haspopup="menu"
             data-testid="halo-project"
@@ -115,6 +115,7 @@ export function TopBar({
           <TouchButton
             variant="ghost"
             className={compact ? 'gap-1.5 px-3 text-fg' : 'gap-2 text-fg'}
+            aria-label={compact ? en.top.share : undefined}
             data-testid="halo-share"
             // leaving for Share commits the open tool session (P15); T11: one touch (J1 step 6)
             onClick={() => {
@@ -123,7 +124,8 @@ export function TopBar({
             }}
           >
             <Icon name="share" />
-            {en.top.share}
+            {/* a 360 px phone cannot afford the word: the icon keeps the action, the label stays for screen readers */}
+            <span className={compact ? 'max-[379px]:hidden' : undefined}>{en.top.share}</span>
             {/* §7.3: the destination is shown as a badge on Share ⤴ (T11) */}
             {badge === null ? null : (
               <span

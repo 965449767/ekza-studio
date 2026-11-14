@@ -161,6 +161,14 @@ export function isIosWebKit(probe: PlatformProbe | undefined = currentNavigator(
 }
 
 /**
+ * True on Android's browser or a WebView (the Android client, docs/ANDROID-CLIENT.md). Like `isIosWebKit`, this is a
+ * device class for storage and memory services only: input routing and layout never use it (S15).
+ */
+export function isAndroid(probe: PlatformProbe | undefined = currentNavigator()): boolean {
+  return probe !== undefined && /\bAndroid\b/.test(probe.userAgent);
+}
+
+/**
  * The `accept` attribute of a file picker: the given list everywhere but iOS, where it is left out (undefined) so
  * that `.vrm`, `.vrma` and `.ekzanim` can be picked; the opened bytes are sniffed instead (S10).
  */

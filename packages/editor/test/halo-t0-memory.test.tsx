@@ -48,6 +48,20 @@ describe('decideMemoryProfile', () => {
     expect([phone.dpr, phone.antialias]).toEqual([[1, 2], true]);
   });
 
+  it('gives an Android phone its own profile: 1.5 DPR above 2 MP, textures at 2048, iOS’s budgets', () => {
+    // 390 × 844 at ratio 3 (the client's phone class, docs/ANDROID-CLIENT.md) = 2.96 MP.
+    const phone = decideMemoryProfile({ ios: false, android: true, dpr: 3, cssPixels: 390 * 844 });
+    expect(phone.id).toBe('android');
+    expect([phone.dpr, phone.antialias]).toEqual([[1, 1.5], true]);
+    expect(phone.textureCapPx).toBe(2048);
+    expect(phone.prefs).toEqual({ modeling: { undoBudgetMB: 96, journalBudgetMB: 24 } });
+    // A big tablet at its native ratio drops MSAA; a small screen keeps the full range.
+    const tablet = decideMemoryProfile({ ios: false, android: true, dpr: 2, cssPixels: 2560 * 1600 });
+    expect([tablet.dpr, tablet.antialias]).toEqual([[1, 1.5], false]);
+    const small = decideMemoryProfile({ ios: false, android: true, dpr: 1, cssPixels: 640 * 480 });
+    expect([small.dpr, small.antialias]).toEqual([[1, 2], true]);
+  });
+
   it('caps textures at 2048, lowers the budgets to 96 + 24 MB and carries Auto-Rig’s triangle gate', () => {
     const profile = decideMemoryProfile({ ios: true, dpr: 2, cssPixels: IPAD_AIR_11 });
     expect(profile.id).toBe('ios');
@@ -68,7 +82,22 @@ describe('decideMemoryProfile', () => {
       innerWidth: 1194,
       innerHeight: 834,
     } as unknown as Window);
-    expect(facts).toEqual({ ios: true, dpr: 2, cssPixels: 834 * 1194 });
+    expect(facts).toEqual({ ios: true, android: false, dpr: 2, cssPixels: 834 * 1194 });
+  });
+
+  it('reads an Android WebView as Android, and an iOS agent that claims Android as iOS', () => {
+    const android = readDeviceFacts({
+      navigator: {
+        userAgent:
+          'Mozilla/5.0 (Linux; Android 15; Pixel 8 Build/AP4A; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/136.0 Mobile Safari/537.36',
+      },
+      devicePixelRatio: 2.625,
+      screen: { width: 412, height: 915 },
+      innerWidth: 412,
+      innerHeight: 915,
+    } as unknown as Window);
+    expect(android).toEqual({ ios: false, android: true, dpr: 2.625, cssPixels: 412 * 915 });
+    expect(decideMemoryProfile(android).id).toBe('android');
   });
 });
 

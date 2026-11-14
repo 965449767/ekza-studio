@@ -10,6 +10,7 @@ import { createDownloadService, type DownloadRecord } from './files';
 import { createLazyGenerationClient, type GenerationClientOptions } from './generation';
 import { createBrowserModelLoader } from './models';
 import { createToastNotifier, type ToastNotifier } from './notify';
+import type { SavePlatform } from './saveTicket';
 import { createBlockedStorage, createLocalStorage, createMemoryStorage, namespacePrefix } from './storage';
 
 /** M2A-SPEC §4.8: storage switches of `createBrowserServices` (e2e URL parameters `ns`, `storage`, `pointerLock`). */
@@ -41,6 +42,11 @@ export interface ShellServicesOptions extends BrowserServicesOptions {
   readonly onDownload?: (record: DownloadRecord) => void;
   /** M7 G-d (ADR 0017 §2): the generation gateway's base ('' or absent = none: the feature is hidden). */
   readonly generation?: GenerationClientOptions;
+  /**
+   * Where exported files go (default: the browser's). A native shell passes its own (the Android client's share
+   * sheet: docs/ANDROID-CLIENT.md); it carries both the direct `download` and the SaveTickets' delivery.
+   */
+  readonly filePlatform?: SavePlatform;
 }
 
 /** The services plus the typed toast queue the shell renders. */
@@ -65,7 +71,10 @@ export function createShellServices(opts: ShellServicesOptions): ShellServices {
   const storageKind = opts.storage === undefined ? 'local' : opts.storage;
   const services: EditorServices = {
     assets: createBrowserAssetStore(),
-    files: createDownloadService(opts.onDownload),
+    files: createDownloadService(
+      opts.onDownload,
+      opts.filePlatform === undefined ? {} : { platform: opts.filePlatform },
+    ),
     clipboard: createBrowserClipboard(),
     notify: toasts,
     models: createBrowserModelLoader({ decoderPath: opts.decoderPath }),

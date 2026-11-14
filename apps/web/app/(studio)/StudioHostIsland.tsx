@@ -11,6 +11,7 @@ import {
   useEffect,
   useState,
 } from 'react';
+import { NativeBindings } from './NativeBindings';
 
 // The `(studio)` layout's island (AUTORIG-SPEC §4.4, D1; decision AR-D1-1 in docs/wp-notes/ar-studio-host.md). Each
 // route's page loads one `next/dynamic` entry group of its own — `StudioHost` with Studio's shell on `/editor`,
@@ -50,6 +51,7 @@ export function StudioHostIsland(props: { readonly children: ReactNode }): JSX.E
   const Shell = entry?.Shell;
   return (
     <RegisterEntry value={register}>
+      <NativeBindings />
       {props.children}
       {first === null ? null : (
         <first.Host {...(entry ?? first).props}>{Shell === undefined ? null : <Shell />}</first.Host>

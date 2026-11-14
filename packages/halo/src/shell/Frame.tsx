@@ -5,7 +5,7 @@
 // Handedness mirrors the off-hand column and the Halo's side. Breathing chrome fades every cluster but ↶ while a press
 // on the canvas travels; Hide UI leaves the canvas and a faint restore button (§4.7).
 import { TouchIconButton, ToastRegion, TouchRoot } from '@ekza-studio/ui/touch';
-import { type JSX, lazy, Suspense, useCallback, useState, useSyncExternalStore } from 'react';
+import { type JSX, lazy, Suspense, useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { HaloPane } from '../canvas/HaloPane';
 import { ViewPuck } from '../canvas/ViewPuck';
 import { HaloLayer } from '../halo/HaloLayer';
@@ -59,6 +59,27 @@ export function Frame({ controller }: { readonly controller: HaloController }): 
     () => app.prefs.getState().uiScale,
   );
   const compact = size === 'compact';
+  // The installed app's back gesture (docs/ANDROID-CLIENT.md): close the topmost layer, then Home, then the card the
+  // shell shows when the UI is hidden; a press with nothing to close is left to the shell, which leaves the app.
+  useEffect(() => {
+    const onBack = (event: Event): void => {
+      const ui = store.get();
+      if (ui.confirm !== null) store.set({ confirm: null });
+      else if (ui.form !== null) store.set({ form: null });
+      else if (ui.target !== null) store.set({ target: null });
+      else if (ui.palette) store.set({ palette: false });
+      else if (ui.projectMenu) store.set({ projectMenu: false });
+      else if (ui.sheet !== null) store.set({ sheet: null, sheetArgs: null, sheetNoun: null });
+      else if (ui.halo !== null) store.set({ halo: null, sub: null });
+      else if (ui.loupe !== null) store.set({ loupe: null });
+      else if (ui.hideUi) store.set({ hideUi: false });
+      else if (!ui.home) store.set({ home: true });
+      else return;
+      event.preventDefault();
+    };
+    window.addEventListener('ekza:native-back', onBack);
+    return () => window.removeEventListener('ekza:native-back', onBack);
+  }, [store]);
   // T7 (P-T6A-4): Animate's tray is the Thread with the Animations row
   const animate = useAnimateDock(controller, size, height);
   // T9: the Next chip gives way while the Rig-it card, the dots, a skin spot or the brush is open (§7.2)

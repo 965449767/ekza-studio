@@ -1,0 +1,94 @@
+name: Android client
+
+# Builds the installable Android client (docs/ANDROID-CLIENT.md): the web app's static export, packaged into the
+# Capacitor shell in `mobile/`. The Gradle build needs a JDK and the Android SDK, which the phone environment does not
+# have, so this workflow is the APK's build channel. Nothing here contacts a server at run time — the job only fetches
+# dependencies and uploads the APK.
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'Build a release APK (needs the EKZA_ANDROID_* signing secrets)'
+        type: boolean
+        default: false
+  push:
+    tags:
+      - 'android-v*'
+
+concurrency:
+  group: android-client-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    name: APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install the workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Static export of the web app
+        # `STUDIO_STATIC_EXPORT=1` is the project's own server-less build (next.config.ts): no route handler runs.
+        run: STUDIO_STATIC_EXPORT=1 NODE_OPTIONS=--max-old-space-size=6144 pnpm --filter web build
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install the shell's dependencies
+        working-directory: mobile
+        run: npm ci
+
+      - name: Copy the export into the shell
+        # Fails on any URL the package does not serve, and writes the app viewport (safe areas, no double-tap zoom).
+        working-directory: mobile
+        run: node scripts/sync.mjs
+
+      - name: Sync Capacitor
+        working-directory: mobile
+        run: npx cap sync android
+
+      - name: Signing (release only)
+        if: ${{ inputs.release && secrets.EKZA_ANDROID_KEYSTORE_BASE64 != '' }}
+        working-directory: mobile
+        env:
+          EKZA_ANDROID_KEYSTORE_BASE64: ${{ secrets.EKZA_ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          echo "$EKZA_ANDROID_KEYSTORE_BASE64" | base64 -d > android/ekza-release.keystore
+          echo "EKZA_ANDROID_KEYSTORE=$PWD/android/ekza-release.keystore" >> "$GITHUB_ENV"
+          echo "EKZA_ANDROID_KEYSTORE_PASSWORD=${{ secrets.EKZA_ANDROID_KEYSTORE_PASSWORD }}" >> "$GITHUB_ENV"
+          echo "EKZA_ANDROID_KEY_ALIAS=${{ secrets.EKZA_ANDROID_KEY_ALIAS }}" >> "$GITHUB_ENV"
+          echo "EKZA_ANDROID_KEY_PASSWORD=${{ secrets.EKZA_ANDROID_KEY_PASSWORD }}" >> "$GITHUB_ENV"
+
+      - name: Build the APK
+        working-directory: mobile/android
+        # The wrapper downloads Gradle once; the caches below keep later runs quick.
+        run: ./gradlew --no-daemon :app:assemble${{ inputs.release && 'Release' || 'Debug' }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ekza-studio-android-${{ github.sha }}
+          path: |
+            mobile/android/app/build/outputs/apk/**/*.apk
+            mobile/android/app/build/outputs/logs/*.txt
+          if-no-files-found: error
+          retention-days: 30

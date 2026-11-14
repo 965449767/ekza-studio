@@ -83,13 +83,17 @@ export function useAnimateDock(
   const compact = size === 'compact';
   const character = animateCharacter(ctx.app);
   if (character === null) return { dock: <EmptyState controller={controller} />, lift: 0, hideNext: false };
+  // A short frame (a phone or a small tablet held sideways) cannot afford the full dock: the Animations row and the
+  // Path's Next chip give way and an unfolded layer is clamped so the canvas keeps at least ~300 px above it.
+  const short = height > 0 && height < 560;
+  const unfoldMax = short ? Math.max(120, Math.round(height - 300)) : Number.POSITIVE_INFINITY;
   // Keys unfold a third of the frame; Curves keep the canvas at 45 % or more of it (§4.2 D) and take the Animations
   // row's place (the active animation is the layer's first chip)
   const unfold =
     layer === 1
-      ? Math.round(height * 0.34)
+      ? Math.min(Math.round(height * 0.34), unfoldMax)
       : layer === 2
-        ? Math.max(300, Math.round(height * (compact ? 0.52 : 0.44)))
+        ? Math.min(Math.max(300, Math.round(height * (compact ? 0.52 : 0.44))), unfoldMax)
         : 0;
   const dock = (
     <div
@@ -110,7 +114,7 @@ export function useAnimateDock(
           <CurvesLayer controller={controller} ui={ui} height={unfold} compact={compact} />
         </Suspense>
       ) : null}
-      {layer === 2 ? null : <AnimationsRow controller={controller} ui={ui} compact={compact} />}
+      {layer === 2 || short ? null : <AnimationsRow controller={controller} ui={ui} compact={compact} />}
       <Thread controller={controller} ui={ui} compact={compact} />
     </div>
   );
@@ -118,7 +122,8 @@ export function useAnimateDock(
     dock,
     // the shell's tray is one 54 px row; the dock is two rows at rest, more with a docked Halo, a card or Keys
     lift: measured > 0 ? Math.max(0, measured - 54) : 60 + unfold,
-    // ST-T7-18: two or more animation chips take the Next chip's place (the Path's glyphs still say what is next)
-    hideNext: animationsOf(ctx.app, character).length >= 2,
+    // ST-T7-18: two or more animation chips take the Next chip's place (the Path's glyphs still say what is next);
+    // on a short frame it goes too, with the row it belongs to
+    hideNext: short || animationsOf(ctx.app, character).length >= 2,
   };
 }

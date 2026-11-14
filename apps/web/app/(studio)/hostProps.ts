@@ -1,10 +1,14 @@
 import type { StudioHostProps } from '@ekza-studio/editor/host';
+import { androidSavePlatform, isNativeShell } from './nativeShell';
 
 /** Inlined at build time: e2e builds expose the test API on `?e2e=1` (MVP-SPEC §4.8). */
 const E2E_BUILD = process.env.NEXT_PUBLIC_EKZA_E2E === '1';
 
 /** The host's props on both routes (M6A-SPEC §3 rule 8: development and e2e builds validate every mesh commit). */
 export function hostProps(navigate: (href: string) => void): StudioHostProps {
+  // The Android client (docs/ANDROID-CLIENT.md): the same build, with files leaving through the share sheet.
+  // Read once, at boot: a browser never has the bridge, so nothing changes there.
+  const native = isNativeShell();
   return {
     decoderPath: '/decoders/',
     samplesPath: '/samples/',
@@ -13,6 +17,7 @@ export function hostProps(navigate: (href: string) => void): StudioHostProps {
     kernelDebug: process.env.NODE_ENV !== 'production' || E2E_BUILD,
     // M7 G-d (M7-GB-12): '/api/gen' in server builds, the build-time gateway URL in static exports, '' = none.
     genGateway: process.env.NEXT_PUBLIC_EKZA_GEN_GATEWAY ?? '',
+    ...(native ? { savePlatform: androidSavePlatform() } : {}),
     navigate,
   };
 }

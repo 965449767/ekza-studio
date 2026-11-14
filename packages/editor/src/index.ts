@@ -19,6 +19,8 @@ export { registerBuiltinPanels } from './panels';
 export { createPanelRegistry } from './panels/registry';
 export type { PanelDef, PanelProps, PanelRegistry } from './panels/types';
 export { type BrowserServicesOptions, createBrowserServices } from './services/browser';
+// The save seam a native shell (the Android client) implements: where a WebView has no `<a download>`.
+export type { SavePlatform } from './services/saveTicket';
 export type { ShellOperatorArgs } from './shell/operator-map';
 export {
   type DopeSheetProbe,
