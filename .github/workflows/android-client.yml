@@ -3,7 +3,10 @@ name: Android client
 # Builds the installable Android client (docs/ANDROID-CLIENT.md): the web app's static export, packaged into the
 # Capacitor shell in `mobile/`. The Gradle build needs a JDK and the Android SDK, which the phone environment does not
 # have, so this workflow is the APK's build channel. Nothing here contacts a server at run time — the job only fetches
-# dependencies and uploads the APK.
+# dependencies and publishes the APK.
+#
+# Repository secrets (release only, all optional): EKZA_ANDROID_KEYSTORE_BASE64, EKZA_ANDROID_KEYSTORE_PASSWORD,
+# EKZA_ANDROID_KEY_ALIAS, EKZA_ANDROID_KEY_PASSWORD.
 on:
   workflow_dispatch:
     inputs:
@@ -14,13 +17,21 @@ on:
   push:
     tags:
       - 'android-v*'
+    branches:
+      - ci/android-client-build
 
 concurrency:
   group: android-client-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  # The APK is published as a Release asset (public download without a token) and the build log as a branch.
+  contents: write
+
+env:
+  CI: "true"
+  NEXT_TELEMETRY_DISABLED: "1"
+  TURBO_TELEMETRY_DISABLED: "1"
 
 jobs:
   apk:
@@ -39,12 +50,17 @@ jobs:
           node-version: 24
           cache: pnpm
 
+      # Every shell step appends to one log: the Actions log API needs a token, the report branch below does not.
       - name: Install the workspace
-        run: pnpm install --frozen-lockfile
+        run: |
+          set -o pipefail
+          pnpm install --frozen-lockfile 2>&1 | tee -a "$RUNNER_TEMP/build.log"
 
       - name: Static export of the web app
         # `STUDIO_STATIC_EXPORT=1` is the project's own server-less build (next.config.ts): no route handler runs.
-        run: STUDIO_STATIC_EXPORT=1 NODE_OPTIONS=--max-old-space-size=6144 pnpm --filter web build
+        run: |
+          set -o pipefail
+          STUDIO_STATIC_EXPORT=1 NODE_OPTIONS=--max-old-space-size=6144 pnpm --filter web build 2>&1 | tee -a "$RUNNER_TEMP/build.log"
 
       - uses: actions/setup-java@v4
         with:
@@ -56,33 +72,53 @@ jobs:
 
       - name: Install the shell's dependencies
         working-directory: mobile
-        run: npm ci
+        run: |
+          set -o pipefail
+          npm ci 2>&1 | tee -a "$RUNNER_TEMP/build.log"
 
       - name: Copy the export into the shell
         # Fails on any URL the package does not serve, and writes the app viewport (safe areas, no double-tap zoom).
         working-directory: mobile
-        run: node scripts/sync.mjs
+        run: |
+          set -o pipefail
+          node scripts/sync.mjs 2>&1 | tee -a "$RUNNER_TEMP/build.log"
 
       - name: Sync Capacitor
         working-directory: mobile
-        run: npx cap sync android
+        run: |
+          set -o pipefail
+          npx cap sync android 2>&1 | tee -a "$RUNNER_TEMP/build.log"
 
       - name: Signing (release only)
-        if: ${{ inputs.release && secrets.EKZA_ANDROID_KEYSTORE_BASE64 != '' }}
+        # `secrets` is not available in a step `if` (a workflow that tries is rejected before it ever starts), so the
+        # condition checks the input and the run step fails loudly when the signing secrets are missing.
+        if: ${{ inputs.release }}
         working-directory: mobile
         env:
           EKZA_ANDROID_KEYSTORE_BASE64: ${{ secrets.EKZA_ANDROID_KEYSTORE_BASE64 }}
+          EKZA_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.EKZA_ANDROID_KEYSTORE_PASSWORD }}
+          EKZA_ANDROID_KEY_ALIAS: ${{ secrets.EKZA_ANDROID_KEY_ALIAS }}
+          EKZA_ANDROID_KEY_PASSWORD: ${{ secrets.EKZA_ANDROID_KEY_PASSWORD }}
         run: |
+          set -euo pipefail
+          if [ -z "${EKZA_ANDROID_KEYSTORE_BASE64:-}" ]; then
+            echo "::error::release build requested, but EKZA_ANDROID_KEYSTORE_BASE64 is not set"
+            exit 1
+          fi
           echo "$EKZA_ANDROID_KEYSTORE_BASE64" | base64 -d > android/ekza-release.keystore
-          echo "EKZA_ANDROID_KEYSTORE=$PWD/android/ekza-release.keystore" >> "$GITHUB_ENV"
-          echo "EKZA_ANDROID_KEYSTORE_PASSWORD=${{ secrets.EKZA_ANDROID_KEYSTORE_PASSWORD }}" >> "$GITHUB_ENV"
-          echo "EKZA_ANDROID_KEY_ALIAS=${{ secrets.EKZA_ANDROID_KEY_ALIAS }}" >> "$GITHUB_ENV"
-          echo "EKZA_ANDROID_KEY_PASSWORD=${{ secrets.EKZA_ANDROID_KEY_PASSWORD }}" >> "$GITHUB_ENV"
+          {
+            echo "EKZA_ANDROID_KEYSTORE=$PWD/android/ekza-release.keystore"
+            echo "EKZA_ANDROID_KEYSTORE_PASSWORD=$EKZA_ANDROID_KEYSTORE_PASSWORD"
+            echo "EKZA_ANDROID_KEY_ALIAS=$EKZA_ANDROID_KEY_ALIAS"
+            echo "EKZA_ANDROID_KEY_PASSWORD=$EKZA_ANDROID_KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
 
       - name: Build the APK
         working-directory: mobile/android
         # The wrapper downloads Gradle once; later runs reuse the runner's Gradle cache.
-        run: ./gradlew --no-daemon :app:assemble${{ inputs.release && 'Release' || 'Debug' }}
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon :app:assemble${{ inputs.release && 'Release' || 'Debug' }} 2>&1 | tee -a "$RUNNER_TEMP/build.log"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -92,3 +128,43 @@ jobs:
             mobile/android/app/build/outputs/logs/*.txt
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish the APK as a Release asset
+        # Public download (no `gh run download` token needed): a Release asset for the run's number.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          variant=${{ inputs.release && 'release' || 'debug' }}
+          apk=$(find mobile/android/app/build/outputs/apk -name '*.apk' | head -1)
+          test -n "$apk"
+          ls -l "$apk" | tee -a "$RUNNER_TEMP/build.log"
+          sha256sum "$apk" | tee -a "$RUNNER_TEMP/build.log"
+          gh release create "android-client-${GITHUB_RUN_NUMBER}" "$apk#ekza-studio-android-${variant}.apk" \
+            --title "Android client build ${GITHUB_RUN_NUMBER} (${variant})" \
+            --notes "Ekza Studio Android client, ${variant} APK, built from \`${GITHUB_SHA}\` by \`.github/workflows/android-client.yml\`." 2>&1 | tee -a "$RUNNER_TEMP/build.log"
+
+      - name: Publish the build report to the `android-ci-report` branch
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          {
+            echo "# Android client build ${GITHUB_RUN_NUMBER}"
+            echo
+            echo "- commit: \`${GITHUB_SHA}\`"
+            echo "- ref: \`${GITHUB_REF}\`"
+            echo "- job status: ${{ job.status }}"
+            echo
+            echo '```'
+            tail -c 150000 "$RUNNER_TEMP/build.log" 2>/dev/null || echo "(no build log)"
+            echo '```'
+          } > "$RUNNER_TEMP/report.md"
+          mkdir -p "$RUNNER_TEMP/report" && cd "$RUNNER_TEMP/report"
+          git init -q -b report
+          cp "$RUNNER_TEMP/report.md" .
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" add report.md
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -qm "Android client build ${GITHUB_RUN_NUMBER} (${{ job.status }})"
+          git remote add origin "https://x-access-token:$GH_TOKEN@github.com/${GITHUB_REPOSITORY}.git"
+          git push -q --force origin HEAD:refs/heads/android-ci-report
