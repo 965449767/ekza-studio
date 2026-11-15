@@ -81,7 +81,7 @@ jobs:
 
       - name: Build the APK
         working-directory: mobile/android
-        # The wrapper downloads Gradle once; the caches below keep later runs quick.
+        # The wrapper downloads Gradle once; later runs reuse the runner's Gradle cache.
         run: ./gradlew --no-daemon :app:assemble${{ inputs.release && 'Release' || 'Debug' }}
 
       - uses: actions/upload-artifact@v4

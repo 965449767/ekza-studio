@@ -16,6 +16,15 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            storeFile System.getenv("EKZA_ANDROID_KEYSTORE") == null ? null : file(System.getenv("EKZA_ANDROID_KEYSTORE"))
+            storePassword System.getenv("EKZA_ANDROID_KEYSTORE_PASSWORD")
+            keyAlias System.getenv("EKZA_ANDROID_KEY_ALIAS")
+            keyPassword System.getenv("EKZA_ANDROID_KEY_PASSWORD")
+        }
+    }
+
     buildTypes {
         release {
             // CI signs a release APK only when the signing secrets are present (docs/ANDROID-CLIENT.md); a local
@@ -25,15 +34,6 @@ android {
             }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-        }
-    }
-
-    signingConfigs {
-        release {
-            storeFile System.getenv("EKZA_ANDROID_KEYSTORE") == null ? null : file(System.getenv("EKZA_ANDROID_KEYSTORE"))
-            storePassword System.getenv("EKZA_ANDROID_KEYSTORE_PASSWORD")
-            keyAlias System.getenv("EKZA_ANDROID_KEY_ALIAS")
-            keyPassword System.getenv("EKZA_ANDROID_KEY_PASSWORD")
         }
     }
 }
