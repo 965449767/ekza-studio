@@ -39,44 +39,71 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out
+        id: checkout
+        uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
+      - name: pnpm
+        id: pnpm
+        uses: pnpm/action-setup@v4
         with:
           version: 10.32.1
 
-      - uses: actions/setup-node@v4
+      - name: Node
+        id: node
+        uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
 
       # Every shell step appends to one log: the Actions log API needs a token, the report branch below does not.
       - name: Install the workspace
+        id: install
         run: |
           set -o pipefail
           pnpm install --frozen-lockfile 2>&1 | tee -a "$RUNNER_TEMP/build.log"
 
       - name: Static export of the web app
+        id: export
         # `STUDIO_STATIC_EXPORT=1` is the project's own server-less build (next.config.ts): no route handler runs.
         run: |
           set -o pipefail
           STUDIO_STATIC_EXPORT=1 NODE_OPTIONS=--max-old-space-size=6144 pnpm --filter web build 2>&1 | tee -a "$RUNNER_TEMP/build.log"
 
-      - uses: actions/setup-java@v4
+      - name: JDK
+        id: java
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
 
       - name: Android SDK
+        id: sdk
         uses: android-actions/setup-android@v3
+        # The ubuntu runner image already ships the Android SDK; this action only pins the command-line tools. A
+        # failure here must not mask the APK build, so it is recorded and the next step verifies what is available.
+        continue-on-error: true
+
+      - name: Verify the Android SDK
+        id: sdkcheck
+        run: |
+          set -o pipefail
+          {
+            echo "ANDROID_HOME=${ANDROID_HOME:-}"
+            echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-}"
+            ls "${ANDROID_HOME:-/usr/local/lib/android/sdk}/platforms" || true
+            ls "${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools" || true
+          } 2>&1 | tee -a "$RUNNER_TEMP/build.log"
 
       - name: Install the shell's dependencies
+        id: shell
         working-directory: mobile
         run: |
           set -o pipefail
           npm ci 2>&1 | tee -a "$RUNNER_TEMP/build.log"
 
       - name: Copy the export into the shell
+        id: copy
         # Fails on any URL the package does not serve, and writes the app viewport (safe areas, no double-tap zoom).
         working-directory: mobile
         run: |
@@ -84,12 +111,14 @@ jobs:
           node scripts/sync.mjs 2>&1 | tee -a "$RUNNER_TEMP/build.log"
 
       - name: Sync Capacitor
+        id: sync
         working-directory: mobile
         run: |
           set -o pipefail
           npx cap sync android 2>&1 | tee -a "$RUNNER_TEMP/build.log"
 
       - name: Signing (release only)
+        id: signing
         # `secrets` is not available in a step `if` (a workflow that tries is rejected before it ever starts), so the
         # condition checks the input and the run step fails loudly when the signing secrets are missing.
         if: ${{ inputs.release }}
@@ -114,13 +143,16 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Build the APK
+        id: apk
         working-directory: mobile/android
         # The wrapper downloads Gradle once; later runs reuse the runner's Gradle cache.
         run: |
           set -o pipefail
           ./gradlew --no-daemon :app:assemble${{ inputs.release && 'Release' || 'Debug' }} 2>&1 | tee -a "$RUNNER_TEMP/build.log"
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload the APK artifact
+        id: artifact
+        uses: actions/upload-artifact@v4
         with:
           name: ekza-studio-android-${{ github.sha }}
           path: |
@@ -130,21 +162,23 @@ jobs:
           retention-days: 30
 
       - name: Publish the APK as a Release asset
-        # Public download (no `gh run download` token needed): a Release asset for the run's number.
+        id: release
+        # Public download (no `gh run download` token needed): a Release asset named after the run number.
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
+          set -o pipefail
           variant=${{ inputs.release && 'release' || 'debug' }}
           apk=$(find mobile/android/app/build/outputs/apk -name '*.apk' | head -1)
           test -n "$apk"
-          ls -l "$apk" | tee -a "$RUNNER_TEMP/build.log"
-          sha256sum "$apk" | tee -a "$RUNNER_TEMP/build.log"
+          ls -l "$apk" 2>&1 | tee -a "$RUNNER_TEMP/build.log"
+          sha256sum "$apk" 2>&1 | tee -a "$RUNNER_TEMP/build.log"
           gh release create "android-client-${GITHUB_RUN_NUMBER}" "$apk#ekza-studio-android-${variant}.apk" \
             --title "Android client build ${GITHUB_RUN_NUMBER} (${variant})" \
             --notes "Ekza Studio Android client, ${variant} APK, built from \`${GITHUB_SHA}\` by \`.github/workflows/android-client.yml\`." 2>&1 | tee -a "$RUNNER_TEMP/build.log"
 
       - name: Publish the build report to the `android-ci-report` branch
+        id: report
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
@@ -156,6 +190,24 @@ jobs:
             echo "- commit: \`${GITHUB_SHA}\`"
             echo "- ref: \`${GITHUB_REF}\`"
             echo "- job status: ${{ job.status }}"
+            echo
+            echo "| step | outcome |"
+            echo "| --- | --- |"
+            echo "| checkout | ${{ steps.checkout.outcome }} |"
+            echo "| pnpm | ${{ steps.pnpm.outcome }} |"
+            echo "| node | ${{ steps.node.outcome }} |"
+            echo "| install | ${{ steps.install.outcome }} |"
+            echo "| export | ${{ steps.export.outcome }} |"
+            echo "| java | ${{ steps.java.outcome }} |"
+            echo "| android-sdk | ${{ steps.sdk.outcome }} |"
+            echo "| sdk-check | ${{ steps.sdkcheck.outcome }} |"
+            echo "| shell-install | ${{ steps.shell.outcome }} |"
+            echo "| copy-export | ${{ steps.copy.outcome }} |"
+            echo "| cap-sync | ${{ steps.sync.outcome }} |"
+            echo "| signing | ${{ steps.signing.outcome }} |"
+            echo "| apk | ${{ steps.apk.outcome }} |"
+            echo "| artifact | ${{ steps.artifact.outcome }} |"
+            echo "| release | ${{ steps.release.outcome }} |"
             echo
             echo '```'
             tail -c 150000 "$RUNNER_TEMP/build.log" 2>/dev/null || echo "(no build log)"
