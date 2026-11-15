@@ -36,6 +36,10 @@ interface NativeBridge {
       exitApp(): Promise<void>;
       minimizeApp(): Promise<void>;
     };
+    /** `FullscreenPlugin.java`: the Android system bars follow the page's Full screen state. */
+    readonly HaloFullscreen?: {
+      setImmersive(options: { readonly enabled: boolean }): Promise<void>;
+    };
   };
 }
 
@@ -133,4 +137,21 @@ export function installBackButton(): () => void {
     disposed = true;
     void registered?.remove();
   };
+}
+
+/**
+ * Hands the page's Full screen state to the shell (docs/ANDROID-CLIENT.md): the browser Fullscreen API inside a
+ * WebView cannot hide the Android status and navigation bars, so entering full screen asks the native plugin to hide
+ * them (transient by swipe) and leaving it brings them back. Without this the "Full screen" operator would only widen
+ * the page inside the same bars.
+ */
+export function installFullscreenBars(): () => void {
+  const plugin = bridge()?.Plugins?.HaloFullscreen;
+  if (plugin === undefined) return () => {};
+  const sync = (): void => {
+    void plugin.setImmersive({ enabled: document.fullscreenElement !== null }).catch(() => undefined);
+  };
+  document.addEventListener('fullscreenchange', sync);
+  sync();
+  return () => document.removeEventListener('fullscreenchange', sync);
 }

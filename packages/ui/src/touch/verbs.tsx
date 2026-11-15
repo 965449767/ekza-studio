@@ -37,8 +37,8 @@ export interface VerbItem {
 }
 
 const petalClass = cn(
-  'inline-flex min-h-(--touch-hit) select-none items-center gap-2 whitespace-nowrap rounded-full border border-line',
-  'bg-panel py-0 pr-4 pl-3 font-medium text-fg shadow-touch transition-[background-color,opacity,transform]',
+  'inline-flex min-h-(--touch-hit) select-none items-center gap-1.5 whitespace-nowrap rounded-full border border-line',
+  'bg-panel py-0 pr-3 pl-2 font-medium text-fg shadow-touch transition-[background-color,opacity,transform]',
   'duration-(--motion-touch) hover:bg-hover active:bg-accent-fill active:text-on-accent',
   'aria-disabled:opacity-50 data-changed:shadow-[inset_0_0_0_2px_var(--warn),var(--elevation-touch)]',
 );

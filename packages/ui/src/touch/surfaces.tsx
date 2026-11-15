@@ -34,8 +34,8 @@ const VARIANT: Record<TouchButtonVariant, string> = {
 
 export const touchButtonClass = (variant: TouchButtonVariant = 'default'): string =>
   cn(
-    'inline-flex min-h-(--touch-hit) min-w-(--touch-hit) select-none items-center justify-center gap-2',
-    'whitespace-nowrap rounded-touch px-4 text-touch font-medium transition-colors duration-(--motion-hover)',
+    'inline-flex min-h-(--touch-hit) min-w-(--touch-hit) select-none items-center justify-center gap-1.5',
+    'whitespace-nowrap rounded-touch px-3 text-touch font-medium transition-colors duration-(--motion-hover)',
     'disabled:cursor-not-allowed disabled:opacity-45 aria-disabled:opacity-45',
     VARIANT[variant],
   );

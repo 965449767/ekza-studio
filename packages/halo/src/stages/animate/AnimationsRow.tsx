@@ -33,7 +33,7 @@ const NumpadPanel = lazy(() => import('../../chips/NumpadPanel'));
 const w = animateWords.dock;
 
 const chipClass =
-  'inline-flex h-(--touch-hit) min-w-(--touch-hit) max-w-[200px] shrink-0 cursor-pointer select-none items-center gap-1.5 rounded-full border border-line bg-panel px-4 text-touch font-medium text-fg-2 shadow-touch hover:text-fg active:bg-pressed aria-pressed:border-accent/60 aria-pressed:bg-accent-soft aria-pressed:text-fg';
+  'inline-flex h-(--touch-hit) min-w-(--touch-hit) max-w-[200px] shrink-0 cursor-pointer select-none items-center gap-1.5 rounded-full border border-line bg-panel px-3 text-touch font-medium text-fg-2 shadow-touch hover:text-fg active:bg-pressed aria-pressed:border-accent/60 aria-pressed:bg-accent-soft aria-pressed:text-fg';
 
 function ClipChip({
   clip,

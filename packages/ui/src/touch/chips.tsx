@@ -7,8 +7,8 @@ import { createScrub, formatValue, keyStep, type ScrubSession } from './scrub';
 import { useLongPress } from './use-long-press';
 
 const chipBase = cn(
-  'inline-flex min-h-(--touch-hit) min-w-(--touch-hit) select-none items-center gap-2 whitespace-nowrap rounded-touch',
-  'border border-line bg-panel px-3.5 shadow-touch transition-[border-color,box-shadow] duration-(--motion-hover)',
+  'inline-flex min-h-(--touch-hit) min-w-(--touch-hit) select-none items-center gap-1.5 whitespace-nowrap rounded-touch',
+  'border border-line bg-panel px-2.5 shadow-touch transition-[border-color,box-shadow] duration-(--motion-hover)',
 );
 
 export interface ValueChipProps {

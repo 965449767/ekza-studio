@@ -44,8 +44,12 @@ loopback); it is not needed for any feature and the CSP would block its use.
   topmost layer in order (confirm card, form, target, search, project menu, sheet, Halo, loupe, hidden UI, Home) and
   calls `preventDefault()`; anything unhandled minimises the app (`nativeShell.ts`, `packages/halo/src/shell/Frame.tsx`).
 - **Edge-to-edge insets** — Android 15+ draws every app under the system bars. `MainActivity` applies the status,
-  navigation and keyboard insets as padding on the WebView, so the page never sits under a bar or the keyboard and
-  nothing is double-inset (Halo's own `env(safe-area-inset-*)` stays 0 there).
+  navigation and keyboard insets as padding on the activity's content view — not on the WebView, whose own padding
+  Chromium's renderer surface ignores — so the page never sits under a bar or the keyboard and nothing is
+  double-inset (Halo's own `env(safe-area-inset-*)` stays 0 there).
+- **Full screen** — the editor's *Full screen* hides the two system bars through `FullscreenPlugin` (immersive,
+  transient by swipe), driven by the page's `fullscreenchange` in `nativeShell.ts`: a WebView cannot hide them on its
+  own, so without the plugin Full screen would only widen the page inside the same bars.
 - **Chrome colours** — transparent bars with light glyphs, the app's `#1b1c1f` background, no overscroll glow, no
   zoom controls.
 - **Memory profile** — `packages/editor/src/host/memoryProfile.ts` caps the device pixel ratio at 1.5 and the texture

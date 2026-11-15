@@ -191,7 +191,7 @@ export function Home({
     });
   };
 
-  const door = 'min-h-[112px] flex-col items-start justify-center gap-1 px-5 text-left';
+  const door = 'min-h-[96px] flex-col items-start justify-center gap-1 px-4 text-left';
 
   return (
     <section
@@ -268,7 +268,7 @@ export function Home({
                 <li key={card.slot} className="flex items-stretch gap-1">
                   <TouchButton
                     variant={index === 0 ? 'primary' : 'default'}
-                    className="min-h-[72px] flex-1 flex-col items-start justify-center gap-0.5 px-4 text-left"
+                    className="min-h-[64px] flex-1 flex-col items-start justify-center gap-0.5 px-3 text-left"
                     data-testid="halo-home-continue-card"
                     data-slot={card.slot}
                     disabled={busy !== null}
@@ -386,7 +386,7 @@ export function Home({
               return (
                 <li key={id}>
                   <TouchButton
-                    className="min-h-[72px] w-full flex-col items-start justify-center gap-0.5 px-4 text-left"
+                    className="min-h-[64px] w-full flex-col items-start justify-center gap-0.5 px-3 text-left"
                     data-testid={`halo-home-${panel === 'samples' ? 'sample' : 'start'}-${id}`}
                     disabled={busy !== null}
                     onClick={() =>
@@ -402,7 +402,7 @@ export function Home({
             {panel === 'starts' && ai ? (
               <li>
                 <TouchButton
-                  className="min-h-[72px] w-full flex-col items-start justify-center gap-0.5 px-4 text-left"
+                  className="min-h-[64px] w-full flex-col items-start justify-center gap-0.5 px-3 text-left"
                   data-testid="halo-home-start-ai"
                   disabled={busy !== null}
                   onClick={() => {
