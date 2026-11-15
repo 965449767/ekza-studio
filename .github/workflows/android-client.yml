@@ -79,20 +79,24 @@ jobs:
 
       - name: Android SDK
         id: sdk
-        uses: android-actions/setup-android@v3
-        # The ubuntu runner image already ships the Android SDK; this action only pins the command-line tools. A
-        # failure here must not mask the APK build, so it is recorded and the next step verifies what is available.
-        continue-on-error: true
-
-      - name: Verify the Android SDK
-        id: sdkcheck
+        # The ubuntu runner image ships the SDK (platforms android-34...36, matching `variables.gradle`'s
+        # compileSdk 36), so no third-party action is needed; a runner without it gets platform 36 installed through
+        # the command-line tools that the image also ships.
         run: |
           set -o pipefail
           {
-            echo "ANDROID_HOME=${ANDROID_HOME:-}"
-            echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-}"
-            ls "${ANDROID_HOME:-/usr/local/lib/android/sdk}/platforms" || true
-            ls "${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools" || true
+            sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+            echo "ANDROID_HOME=$sdk"
+            if [ ! -d "$sdk/platforms/android-36" ]; then
+              manager="$sdk/cmdline-tools/latest/bin/sdkmanager"
+              if [ -x "$manager" ]; then
+                yes | "$manager" --licenses >/dev/null 2>&1 || true
+                "$manager" "platforms;android-36" "build-tools;36.0.0"
+              else
+                echo "::warning::platform 36 is missing and cmdline-tools are not installed"
+              fi
+            fi
+            ls "$sdk/platforms" "$sdk/build-tools"
           } 2>&1 | tee -a "$RUNNER_TEMP/build.log"
 
       - name: Install the shell's dependencies
@@ -200,7 +204,6 @@ jobs:
             echo "| export | ${{ steps.export.outcome }} |"
             echo "| java | ${{ steps.java.outcome }} |"
             echo "| android-sdk | ${{ steps.sdk.outcome }} |"
-            echo "| sdk-check | ${{ steps.sdkcheck.outcome }} |"
             echo "| shell-install | ${{ steps.shell.outcome }} |"
             echo "| copy-export | ${{ steps.copy.outcome }} |"
             echo "| cap-sync | ${{ steps.sync.outcome }} |"
