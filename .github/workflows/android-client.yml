@@ -175,11 +175,15 @@ jobs:
           variant=${{ inputs.release && 'release' || 'debug' }}
           apk=$(find mobile/android/app/build/outputs/apk -name '*.apk' | head -1)
           test -n "$apk"
-          ls -l "$apk" 2>&1 | tee -a "$RUNNER_TEMP/build.log"
-          sha256sum "$apk" 2>&1 | tee -a "$RUNNER_TEMP/build.log"
-          gh release create "android-client-${GITHUB_RUN_NUMBER}" "$apk#ekza-studio-android-${variant}.apk" \
+          # A named copy: Gradle's own file name (`app-debug.apk`) reads badly as a Release asset.
+          asset="ekza-studio-android-${variant}.apk"
+          cp "$apk" "$asset"
+          ls -l "$asset" 2>&1 | tee -a "$RUNNER_TEMP/build.log"
+          sha256=$(sha256sum "$asset" | cut -d' ' -f1)
+          echo "sha256=$sha256" 2>&1 | tee -a "$RUNNER_TEMP/build.log"
+          gh release create "android-client-${GITHUB_RUN_NUMBER}" "$asset" \
             --title "Android client build ${GITHUB_RUN_NUMBER} (${variant})" \
-            --notes "Ekza Studio Android client, ${variant} APK, built from \`${GITHUB_SHA}\` by \`.github/workflows/android-client.yml\`." 2>&1 | tee -a "$RUNNER_TEMP/build.log"
+            --notes "Ekza Studio Android client, ${variant} APK, built from \`${GITHUB_SHA}\` by \`.github/workflows/android-client.yml\`. sha256: \`$sha256\`" 2>&1 | tee -a "$RUNNER_TEMP/build.log"
 
       - name: Publish the build report to the `android-ci-report` branch
         id: report
