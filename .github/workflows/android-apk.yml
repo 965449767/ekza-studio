@@ -1,0 +1,139 @@
+name: Android APK (Capacitor)
+
+# Builds the static web export (`STUDIO_STATIC_EXPORT=1`, the same switch the GitHub Pages / IPFS build uses) and
+# wraps it in a Capacitor Android shell, then publishes the debug APK as a GitHub Release asset.
+#
+# Deliberately self-contained: the Capacitor project is generated under $RUNNER_TEMP instead of living in the repo, so
+# this job adds no dependency, lockfile entry or Android project to the workspace. Remove the workflow when the
+# Android shell gets a home of its own.
+#
+# Run it from the Actions tab (workflow_dispatch) or push to the `ci/android-apk` branch.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ci/android-apk
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: "true"
+  NEXT_TELEMETRY_DISABLED: "1"
+  TURBO_TELEMETRY_DISABLED: "1"
+  # next.config.ts: STUDIO_STATIC_EXPORT=1 -> `output: 'export'`; the server-only gateway routes stay out of the bundle.
+  STUDIO_STATIC_EXPORT: "1"
+
+jobs:
+  apk:
+    name: static export -> Capacitor -> debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # Every shell step appends to one log so the `always()` report step below can publish it (the Actions log API
+      # needs a token; a branch does not).
+      - name: Install dependencies
+        run: |
+          set -o pipefail
+          pnpm install --frozen-lockfile 2>&1 | tee -a "$RUNNER_TEMP/build.log"
+
+      - name: Build the static web export
+        run: |
+          set -o pipefail
+          pnpm --filter web build 2>&1 | tee -a "$RUNNER_TEMP/build.log"
+
+      - name: Verify the static export
+        run: |
+          set -o pipefail
+          {
+            ls -l apps/web/out/index.html
+            du -sh apps/web/out
+            ls apps/web/out
+          } 2>&1 | tee -a "$RUNNER_TEMP/build.log"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Wrap the static export in Capacitor
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/cap/www"
+          cp -r apps/web/out/. "$RUNNER_TEMP/cap/www/"
+          cd "$RUNNER_TEMP/cap"
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7 2>&1 | tee -a "$RUNNER_TEMP/build.log"
+          npx cap init "Ekza Studio" studio.ekza.android --web-dir www 2>&1 | tee -a "$RUNNER_TEMP/build.log"
+          npx cap add android 2>&1 | tee -a "$RUNNER_TEMP/build.log"
+          npx cap sync android 2>&1 | tee -a "$RUNNER_TEMP/build.log"
+
+      - name: Build the debug APK
+        run: |
+          set -o pipefail
+          cd "$RUNNER_TEMP/cap/android"
+          ./gradlew --no-daemon assembleDebug 2>&1 | tee -a "$RUNNER_TEMP/build.log"
+
+      - name: Collect the APK
+        run: |
+          set -o pipefail
+          mkdir -p dist
+          cp "$RUNNER_TEMP/cap/android/app/build/outputs/apk/debug/app-debug.apk" dist/ekza-studio-android-debug.apk
+          ls -l dist 2>&1 | tee -a "$RUNNER_TEMP/build.log"
+          sha256sum dist/ekza-studio-android-debug.apk 2>&1 | tee -a "$RUNNER_TEMP/build.log"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ekza-studio-android-debug-apk
+          path: dist/ekza-studio-android-debug.apk
+          retention-days: 14
+
+      - name: Publish the APK as a Release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          gh release create "android-apk-${{ github.run_number }}" dist/ekza-studio-android-debug.apk \
+            --title "Android APK build ${{ github.run_number }}" \
+            --notes "Debug APK of the static web export (\`STUDIO_STATIC_EXPORT=1\`), built from \`${{ github.sha }}\` with Capacitor 7. Install it on an Android device with 'unknown sources' allowed; it is unsigned-for-release (debug keystore) and has no generation gateway (static builds never bundle it)." 2>&1 | tee -a "$RUNNER_TEMP/build.log"
+
+      - name: Publish the build report to the `android-ci-report` branch
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          {
+            echo "# Android APK build ${{ github.run_number }}"
+            echo
+            echo "- commit: \`${{ github.sha }}\`"
+            echo "- run: ${{ github.run_number }}, attempt ${{ github.run_attempt }}"
+            echo "- job status: ${{ job.status }}"
+            echo
+            echo '```'
+            tail -c 150000 "$RUNNER_TEMP/build.log" 2>/dev/null || echo "(no build log)"
+            echo '```'
+          } > "$RUNNER_TEMP/report.md"
+          mkdir -p "$RUNNER_TEMP/report" && cd "$RUNNER_TEMP/report"
+          git init -q -b report
+          cp "$RUNNER_TEMP/report.md" .
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" add report.md
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -qm "Android APK build ${{ github.run_number }} (${{ job.status }})"
+          git remote add origin "https://x-access-token:$GH_TOKEN@github.com/${{ github.repository }}.git"
+          git push -q --force origin HEAD:refs/heads/android-ci-report
